@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B141B">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Jarvis</title>
+<style>
+:root{--bg:#E9EEF2;--panel:#F7F9FA;--ink:#14222E;--mute:#5C6C79;--line:#C9D3DB;--accent:#0F7B6C;--me:#14222E;--meink:#F7F9FA}
+@media (prefers-color-scheme:dark){:root{--bg:#10181F;--panel:#18232C;--ink:#E6ECF0;--mute:#8FA0AD;--line:#2A3946;--accent:#3CC4AE;--me:#E6ECF0;--meink:#10181F}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.5 system-ui,"Segoe UI",sans-serif;display:flex;flex-direction:column;max-width:760px;margin:0 auto;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 0 8px}
+h1{font-size:22px;font-weight:600;margin:0}
+#estado{color:var(--mute);font-size:14px}
+button{font:inherit;color:inherit;cursor:pointer}
+.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 12px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#stage{position:relative;height:clamp(190px,30vh,270px);border-radius:18px;background:radial-gradient(circle at 50% 45%,#12303A,#0B141B 70%);overflow:hidden;flex:none}
+#cv{width:100%;height:100%;display:block}
+#nodos{position:absolute;left:14px;bottom:10px;color:#8FB8C0;font-size:13px}
+#log{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:12px 0}
+.m{max-width:85%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.yo{align-self:flex-end;background:var(--me);color:var(--meink);border-bottom-right-radius:4px}
+.ia{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-bottom-left-radius:4px}
+.sys{align-self:center;color:var(--mute);font-size:14px;text-align:center}
+.sug{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.sug button{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:14px}
+footer{padding:8px 0 16px;display:flex;align-items:center;gap:12px}
+#orb{flex:none;width:60px;height:60px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center}
+#orb svg{width:26px;height:26px}
+#orb.on{background:#D98E04}
+#txt{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:14px 18px;font:inherit}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--ink);max-width:440px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+label{display:block;margin:12px 0 4px;font-weight:600}
+dialog input[type=password],dialog input[type=text]{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+small{color:var(--mute);display:block;margin-top:4px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Jarvis</h1><div id="estado" role="status">Listo</div></div>
+  <button class="ghost" id="ajustes">Ajustes</button>
+</header>
+
+<div id="stage"><canvas id="cv" aria-label="Esfera de Jarvis: se mueve cuando habla y suma nodos con cada dato nuevo"></canvas><div id="nodos"></div></div>
+
+<main id="log" aria-live="polite"></main>
+
+<footer>
+  <button id="orb" aria-label="Hablar con Jarvis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+  <input id="txt" type="text" placeholder="Escribe o toca el micrófono" aria-label="Mensaje" autocomplete="off">
+</footer>
+
+<dialog id="dlg">
+  <h2 style="margin:0 0 4px;font-size:18px">Ajustes</h2>
+  <label for="srv">Servidor OpenJarvis (tu PC)</label>
+  <input id="srv" type="text" placeholder="http://192.168.1.50:8000" autocomplete="off">
+  <small>Si lo llenas, Jarvis usa tu PC como cerebro.</small>
+  <label for="mod">Modelo (opcional)</label>
+  <input id="mod" type="text" placeholder="vacío = el primero disponible" autocomplete="off">
+  <label for="key">Clave de API de Anthropic (alternativa)</label>
+  <input id="key" type="password" placeholder="sk-ant-..." autocomplete="off">
+  <small>Se guarda solo en este dispositivo.</small>
+  <label><input type="checkbox" id="voz" checked> Responder con voz</label>
+  <label for="nombre">¿Cómo te llamo?</label>
+  <input id="nombre" type="text" placeholder="Tu nombre">
+  <div class="row"><button class="ghost" id="cerrar">Cancelar</button><button class="ghost" id="guardar" style="background:var(--accent);color:#fff;border-color:var(--accent)">Guardar</button></div>
+</dialog>
+
+<script>
+const $=s=>document.querySelector(s);
+const log=$('#log'),estado=$('#estado'),orb=$('#orb'),txt=$('#txt');
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let cfg=Object.assign({servidor:'',modelo:'',key:'',voz:true,nombre:''},store.get('jarvis_cfg',{}));
+let notas=store.get('jarvis_notas',[]);
+let saber=store.get('jarvis_saber',0);   // cada dato nuevo suma nodos a la esfera
+let hist=[];
+
+/* ===== Esfera holográfica ===== */
+const cv=$('#cv'),g=cv.getContext('2d');
+const MAX=260,pts=[],born=[];
+for(let i=0;i<MAX;i++){const y=1-2*(i+.5)/MAX,r=Math.sqrt(1-y*y),a=i*2.399963;pts.push([Math.cos(a)*r,y,Math.sin(a)*r])}
+const ady=pts.map((p,i)=>{const d=[];pts.forEach((q,j)=>{if(j<i&&Math.hypot(p[0]-q[0],p[1]-q[1],p[2]-q[2])<.62)d.push(j)});return d});
+const rm=matchMedia('(prefers-reduced-motion:reduce)').matches;
+let W=0,H=0,amp=0,estadoViz='idle',col=[60,196,174],yaw=0,hablando=false;
+const COL={idle:[60,196,174],listen:[242,179,61],think:[150,150,255],speak:[120,220,255]};
+function nVis(){return Math.min(MAX,18+saber)}
+for(let i=0;i<nVis();i++)born[i]=-9;
+function crecer(n){const antes=nVis();saber+=n;store.set('jarvis_saber',saber);for(let i=antes;i<nVis();i++)born[i]=performance.now()/1000;$('#nodos').textContent=nVis()+' nodos'}
+function kick(v){amp=Math.min(1,amp+(v||.5))}
+function ajusta(){const d=devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*d;cv.height=H*d;g.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',ajusta);
+function dibuja(ms){
+  const t=ms/1000,tgt=COL[estadoViz];
+  col=col.map((c,i)=>c+(tgt[i]-c)*.08);
+  const objetivo=hablando?.55+.25*Math.sin(t*9):0;
+  amp+=((rm?objetivo*.3:objetivo)-amp)*.12; if(amp<0)amp=0;
+  yaw+=(rm?.001:.004+amp*.03+(estadoViz==='think'?.02:0));
+  const cx=W/2,cy=H/2-6,R=Math.min(W,H)*.36,[r,gg,b]=col,c=(a)=>`rgba(${r|0},${gg|0},${b|0},${a})`;
+  g.clearRect(0,0,W,H);
+  const halo=g.createRadialGradient(cx,cy,R*.2,cx,cy,R*(1.5+amp*.4));halo.addColorStop(0,c(.18+amp*.15));halo.addColorStop(1,c(0));
+  g.fillStyle=halo;g.fillRect(0,0,W,H);
+  g.strokeStyle=c(.25+amp*.3);g.lineWidth=1;
+  for(let k=0;k<2;k++){g.beginPath();g.arc(cx,cy,R*(1.12+k*.1+amp*.08*(k+1)),0,7);g.stroke()}
+  const cy2=Math.cos(yaw),sy=Math.sin(yaw),tilt=.45,ct=Math.cos(tilt),st=Math.sin(tilt);
+  const n=nVis(),P=[];
+  for(let i=0;i<n;i++){
+    const p=pts[i],w=rm?0:amp*.16*Math.sin(t*7+i*1.7);
+    let x=p[0]*(1+w),y=p[1]*(1+w),z=p[2]*(1+w);
+    let x1=x*cy2+z*sy,z1=-x*sy+z*cy2,y1=y*ct-z1*st,z2=y*st+z1*ct;
+    const f=1/(1.9-z2*.6)*1.9,age=t-born[i];
+    P[i]={x:cx+x1*R*f,y:cy+y1*R*f,z:z2,k:Math.min(1,Math.max(0,age*1.5)),flash:Math.max(0,1-age/1.6)};
+  }
+  g.lineWidth=.8;
+  for(let i=0;i<n;i++){const a=P[i];for(const j of ady[i]){if(j>=n)continue;const q=P[j],al=Math.min(a.k,q.k)*(.12+.3*((a.z+q.z)/2+1)/2);if(al<.02)continue;g.strokeStyle=c(al);g.beginPath();g.moveTo(a.x,a.y);g.lineTo(q.x,q.y);g.stroke()}}
+  for(let i=0;i<n;i++){const a=P[i],d=(a.z+1)/2,s=(1.2+d*2)*a.k*(1+a.flash*2.5);g.fillStyle=a.flash>0?`rgba(255,255,255,${.4+a.flash*.6})`:c(.35+d*.65);g.beginPath();g.arc(a.x,a.y,s,0,7);g.fill()}
+  const sc=((t*.35)%1)*H*1.2-H*.1;g.fillStyle=c(.05);g.fillRect(0,sc,W,14);   // barrido holográfico
+  requestAnimationFrame(dibuja);
+}
+ajusta();$('#nodos').textContent=nVis()+' nodos';requestAnimationFrame(dibuja);
+
+/* ===== Chat y voz ===== */
+function add(texto,cls){const d=document.createElement('div');d.className='m '+cls;d.textContent=texto;log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
+function hablar(t){
+  if(!cfg.voz||!('speechSynthesis' in window)){hablando=false;estadoViz='idle';return}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(t);u.lang='es-MX';
+  u.onstart=()=>{hablando=true;estadoViz='speak'};
+  u.onboundary=()=>kick(.35);
+  u.onend=u.onerror=()=>{hablando=false;estadoViz='idle'};
+  speechSynthesis.speak(u);
+}
+function responder(t){add(t,'ia');crecer(2);hablar(t)}
+
+function local(q){
+  const s=q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');let m;
+  if(/que hora es|la hora/.test(s))return 'Son las '+new Date().toLocaleTimeString('es-MX',{hour:'numeric',minute:'2-digit'})+'.';
+  if(/que dia es|la fecha|que fecha/.test(s))return 'Hoy es '+new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';
+  if(m=s.match(/(?:temporizador|alarma|avisame)\D*(\d+)\s*(segundo|minuto|hora)/)){const n=+m[1],ms=n*({segundo:1,minuto:60,hora:3600}[m[2]])*1000;setTimeout(()=>responder('Tu temporizador de '+n+' '+m[2]+(n>1?'s':'')+' terminó.'),ms);return 'Listo, temporizador de '+n+' '+m[2]+(n>1?'s':'')+'. Mantén esta pestaña abierta.'}
+  if(m=q.match(/^(?:anota|apunta|guarda nota)[:,]?\s+(.+)/i)){notas.push({t:m[1],f:Date.now()});store.set('jarvis_notas',notas);crecer(3);return 'Anotado: '+m[1]}
+  if(/(mis notas|leer notas|que anote)/.test(s))return notas.length?notas.map((n,i)=>(i+1)+'. '+n.t).join('\n'):'Aún no tienes notas.';
+  if(/borra.*notas/.test(s)){notas=[];store.set('jarvis_notas',notas);return 'Notas borradas.'}
+  if(m=q.match(/^(?:busca|buscar)\s+(?:en google\s+)?(.+)/i)){window.open('https://www.google.com/search?q='+encodeURIComponent(m[1]),'_blank');return 'Buscando "'+m[1]+'".'}
+  if(m=s.match(/^abre\s+(youtube|google|maps|gmail|github)/)){window.open({youtube:'https://youtube.com',google:'https://google.com',maps:'https://maps.google.com',gmail:'https://mail.google.com',github:'https://github.com'}[m[1]],'_blank');return 'Abriendo '+m[1]+'.'}
+  return null;
+}
+
+const SYS=()=>'Eres Jarvis, un asistente personal por voz. Responde en español, breve y directo (máximo 3 frases), sin formato markdown.'+(cfg.nombre?' El usuario se llama '+cfg.nombre+'.':'');
+
+/* Cerebro 1: servidor OpenJarvis en tu PC (compatible con OpenAI, con streaming) */
+let modeloAuto='';
+async function viaServidor(q,burbuja){
+  const base=cfg.servidor.replace(/\/+$/,'');
+  let modelo=cfg.modelo||modeloAuto;
+  if(!modelo){const r=await fetch(base+'/v1/models');const d=await r.json();modelo=modeloAuto=d.data&&d.data[0]&&d.data[0].id;if(!modelo)throw new Error('el servidor no lista modelos')}
+  hist.push({role:'user',content:q});
+  const r=await fetch(base+'/v1/chat/completions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:modelo,stream:true,messages:[{role:'system',content:SYS()}].concat(hist.slice(-12))})});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf='',tot='';estadoViz='speak';hablando=true;
+  for(;;){
+    const {done,value}=await rd.read();if(done)break;
+    buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();
+    for(const l of ls){if(!l.startsWith('data:'))continue;const p=l.slice(5).trim();if(p==='[DONE]')continue;
+      try{const c=JSON.parse(p).choices[0].delta.content;if(c){tot+=c;burbuja.textContent=tot;kick(.3);log.scrollTop=log.scrollHeight}}catch(e){}}
+  }
+  hist.push({role:'assistant',content:tot});return tot;
+}
+/* Cerebro 2: Claude directo con tu clave */
+async function viaClaude(q){
+  hist.push({role:'user',content:q});
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':cfg.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,system:SYS(),messages:hist.slice(-12)})});
+  const d=await r.json();if(!r.ok)throw new Error(d.error&&d.error.message||r.status);
+  const t=d.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');hist.push({role:'assistant',content:t});return t;
+}
+
+async function enviar(q){
+  q=q.trim();if(!q)return;
+  add(q,'yo');txt.value='';crecer(1);
+  const l=local(q);if(l){responder(l);return}
+  if(!cfg.servidor&&!cfg.key){responder('Para conversar necesito un cerebro: pon la dirección de tu servidor OpenJarvis o una clave de API en Ajustes. Mientras tanto entiendo hora, fecha, temporizadores, notas, buscar y abrir sitios.');return}
+  estado.textContent='Pensando…';estadoViz='think';
+  try{
+    if(cfg.servidor){
+      const b=add('…','ia');const t=await viaServidor(q,b);estado.textContent='Listo';crecer(2);hablar(t);
+    }else{const t=await viaClaude(q);estado.textContent='Listo';responder(t)}
+  }catch(e){
+    hist.pop();estado.textContent='Listo';estadoViz='idle';hablando=false;
+    const https=location.protocol==='https:'&&/^http:/.test(cfg.servidor);
+    add('No pude conectar: '+e.message+(https?'. Esta página usa HTTPS y tu servidor usa HTTP; el navegador lo bloquea. Abre la app desde el mismo origen o usa una dirección HTTPS (por ejemplo con Tailscale).':''),'sys');
+  }
+}
+
+/* Micrófono */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,esc=false;
+if(SR){rec=new SR();rec.lang='es-MX';
+  rec.onstart=()=>{esc=true;orb.classList.add('on');estado.textContent='Escuchando…';estadoViz='listen'};
+  rec.onend=()=>{esc=false;orb.classList.remove('on');if(estadoViz==='listen')estadoViz='idle';if(estado.textContent==='Escuchando…')estado.textContent='Listo'};
+  rec.onerror=e=>{if(e.error==='not-allowed')add('Permite el acceso al micrófono para hablar con Jarvis.','sys')};
+  rec.onresult=e=>enviar(e.results[0][0].transcript)}
+orb.onclick=()=>{if(!rec){add('Este navegador no tiene reconocimiento de voz. Prueba Chrome, Edge o Safari, o escribe.','sys');return}speechSynthesis.cancel();hablando=false;esc?rec.stop():rec.start()};
+txt.addEventListener('keydown',e=>{if(e.key==='Enter')enviar(txt.value)});
+
+/* Ajustes */
+const dlg=$('#dlg');
+$('#ajustes').onclick=()=>{$('#srv').value=cfg.servidor;$('#mod').value=cfg.modelo;$('#key').value=cfg.key;$('#voz').checked=cfg.voz;$('#nombre').value=cfg.nombre;dlg.showModal()};
+$('#cerrar').onclick=()=>dlg.close();
+$('#guardar').onclick=()=>{cfg={servidor:$('#srv').value.trim(),modelo:$('#mod').value.trim(),key:$('#key').value.trim(),voz:$('#voz').checked,nombre:$('#nombre').value.trim()};modeloAuto='';store.set('jarvis_cfg',cfg);dlg.close();add('Ajustes guardados.','sys')};
+
+/* Inicio */
+add('Hola'+(cfg.nombre?', '+cfg.nombre:'')+'. Cada dato nuevo suma nodos a mi esfera. Prueba con:','sys');
+const sug=document.createElement('div');sug.className='sug';
+['¿Qué hora es?','Temporizador de 5 minutos','Anota: comprar café','Cuéntame un dato curioso'].forEach(t=>{const b=document.createElement('button');b.textContent=t;b.onclick=()=>enviar(t);sug.appendChild(b)});
+log.appendChild(sug);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
